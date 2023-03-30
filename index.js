@@ -1,3 +1,4 @@
+
 // import jwt from "jsonwebtoken"
 var jwt = require("jsonwebtoken");
 const express= require('express');
@@ -8,19 +9,33 @@ app.use(cors());
 const bcrypt = require('bcryptjs');
 const mysql = require('mysql2');
 const { check } = require("express-validator");
-app.use(cors());
-app.use(bodyparser.json());
 
-const db = mysql.createConnection({
-	host: 'localhost',
-	user: 'root',
-	password: '',
-	database:'labreservationsystem',
-	port:3306
-});
+app.use(bodyparser.json());
+app.use(express.static('./dist/frontend'))
+
+ var mysqlHost = process.env.MYSQL_HOST || '179.19.0.1';
+   var mysqlPort = process.env.MYSQL_PORT || '3306';
+   var mysqlUser = process.env.MYSQL_USER || 'root';
+   var mysqlPass = process.env.MYSQL_PASS || 'password';
+   var mysqlDB   = process.env.MYSQL_DB   || 'labreservationsystem';
+
+   var connectionOptions = {
+     host: mysqlHost,
+     port: mysqlPort,
+     user: mysqlUser,
+     password: mysqlPass,
+     database: mysqlDB
+   };
+
+ var db = mysql.createConnection(connectionOptions);
+
+
+
+
+
 
 db.connect(err=>{
-	if(err) {console.log('err')}
+	if(err) {console.log(err)}
 	console.log('database connected successfully')
 })
 
@@ -53,7 +68,33 @@ app.get('/userdeviceinfo', (req, res)=>{
     startTime=new Date(date.getTime()+offset);
     startTime=startTime.toISOString().substring(0,16);
 	let deleted= 'deleted';
-	let qrr = `select deviceid from userdeviceinfo where time<= '${startTime}' and endtime >='${startTime}' and status != '${deleted}'`;
+	let qrr = `select deviceid , time, endtime, name from userdeviceinfo where time<= '${startTime}' and endtime >='${startTime}' and status != '${deleted}'`;
+	db.query(qrr, (err, results)=> {
+	if(err){
+		return res.status(663).json({
+			message:'something went wrong !'
+		})
+	}
+	if(results.length>0){
+		res.send({
+			message: 'all users data',
+			data:results
+		});
+	};
+	});
+	
+});
+
+
+app.get('/project', (req, res)=>{
+	// console.log('Get all users');
+	let ISToffSet = 330; //IST is 5:30; i.e. 60*5+30 = 330 in minutes 
+    let offset= ISToffSet*60*1000;
+    let date=new Date();
+    startTime=new Date(date.getTime()+offset);
+    startTime=startTime.toISOString().substring(0,16);
+	let deleted= 'deleted';
+	let qrr = `select deviceid , time, endtime, name from userdeviceinfo where time<= '${startTime}' and endtime >='${startTime}' and status != '${deleted}'`;
 	db.query(qrr, (err, results)=> {
 	if(err){
 		return req.status(663).json({
@@ -154,7 +195,7 @@ app.get('/users/:id/:access', (req, res)=>{
 	let qrr = `SELECT b.id, b.teamname,b.name, b.accesslevel FROM users a INNER JOIN users b ON a.teamname= b.teamname where a.id='${qrId}' and b.id != a.id`;
 	db.query(qrr, (err, results)=> {
 	if(err){
-		return req.status(663).json({
+		return res.status(663).json({
 			message:'something went wrong !'
 		})
 	}
@@ -181,7 +222,7 @@ app.get('/cart/:id', (req, res)=>{
 	devices.status  from cart INNER JOIN devices ON cart.deviceid=devices.id where cart.userid='${qrId}'`;
 	db.query(qrr, (err, results)=> {
 	if(err){
-		return req.status(663).json({
+		return res.status(663).json({
 			message:'something went wrong !'
 		})
 	}
@@ -208,7 +249,7 @@ app.get('/cart/:id/:date', (req, res)=>{
 	let qrr = `select userdeviceinfo.time, userdeviceinfo.endtime , userdeviceinfo.timeid, userdeviceinfo.name from userdeviceinfo INNER JOIN cart ON userdeviceinfo.deviceid=cart.deviceid where userdeviceinfo.userid= cart.userid and userdeviceinfo.status!= '${deleted}' and userdeviceinfo.time LIKE '${date}'`;
 	db.query(qrr, (err, results)=> {
 	if(err){
-		return req.status(663).json({
+		return res.status(663).json({
 			message:'something went wrong !'
 		})
 	}
@@ -236,10 +277,12 @@ app.post('/users', async (req, res)=>{
 	let qrr = `SELECT * FROM users WHERE name LIKE "${username}"`;
 	db.query(qrr, async (err, results)=> {
 	if(err){
-		return req.status(663).json({
+		return res.status(663).json({
 			message:'something went wrong !'
-		})
-	}
+
+	})
+	console.log(err);
+}
 	if(results.length>0){
 		
 		// console.log(results);
@@ -291,7 +334,7 @@ app.post('/users/:changepassword', async (req, res)=>{
 	let qrr = `update users set password='${hashedPassword}' where id=${uId}` ;
 	db.query(qrr, async (err, results)=> {
 	if(err){
-		return req.status(663).json({
+		return re.status(663).json({
 			message:'something went wrong !'
 		})
 	}
@@ -479,59 +522,57 @@ app.put('/topology/:id', (req, res)=> {
 })
 
 app.put('/topology/:id/:extended/:update', (req, res)=> {
-	let timeId= req.body.timeid;
+
 	let name=req.body.name;
 	let teamname= req.body.team;
-	let startTime= req.body.startTime;
-	let endTime= req.body.endTime;
+	
 	let uId= req.body.uId;
 	let start= req.body.startDate;
 	let end= req.body.endDate;
 	
 	// console.log(new Date(start), new Date(end));
-	let arr= []
+	// let arr= []
 
-		for(let dt=new Date(start); dt<=new Date(end); dt.setDate(dt.getDate()+1)){
-			let ISToffSet = 330; //IST is 5:30; i.e. 60*5+30 = 330 in minutes 
-			let offset= ISToffSet*60*1000;
-			let date=new Date(dt);
+	// 	for(let dt=new Date(start); dt<=new Date(end); dt.setDate(dt.getDate()+1)){
+	// 		let ISToffSet = 330; //IST is 5:30; i.e. 60*5+30 = 330 in minutes 
+	// 		let offset= ISToffSet*60*1000;
+	// 		let date=new Date(dt);
 			
-			let startTime=new Date(date.getTime()+offset);
+	// 		let startTime=new Date(date.getTime()+offset);
 			
 			
-			startTime=startTime.toISOString().substring(0,11);
-			arr.push(startTime);
-		}
-		// console.log(arr);
+	// 		startTime=startTime.toISOString().substring(0,11);
+	// 		arr.push(startTime);
+	// 	}
+	// 	// console.log(arr);
 
 	let values= [];
 	for(let i=0;i<req.body.DeviceId.length;i++){
-		for(j=0;j<arr.length;j++){
+	
 			let temp = [];
 			temp.push(name);
 			temp.push(teamname);
-			temp.push(arr[j].substring(0, 11)+startTime);
-			temp.push(arr[j].substring(0, 11)+endTime);
+			temp.push(start);
+			temp.push(end);
 			temp.push(req.body.DeviceId[i]);
 			temp.push(uId);
-			temp.push(timeId);
 			values.push(temp);
-		}
+		
 	}
 	let deleted= 'deleted';
 	// console.log(values+"huhu");
 
-	let qrr=`select * from userdeviceinfo where time='${values[0][2]}' and endtime='${values[0][3]}' and deviceid='${values[0][4]}' and status!='${deleted}'`;
-	db.query(qrr, (err, results)=>{
-		if(results.length>0){
-			res.status(663).json({
-				message: 'Time slot not available, please refresh the page to see latest available time slots'
-			})
-			return;
-		}
-		else{
-			let tempQuery = `insert into userdeviceinfo (name, team , time, endtime, deviceid, userid, timeid) values ?`;
-			db.query(tempQuery, [values], (err, results)=> {
+	// let qrr=`select * from userdeviceinfo where time='${values[0][2]}' and endtime='${values[0][3]}' and deviceid='${values[0][4]}' and status!='${deleted}'`;
+	// db.query(qrr, (err, results)=>{
+	// 	if(results.length>0){
+	// 		res.status(663).json({
+	// 			message: 'Time slot not available, please refresh the page to see latest available time slots'
+	// 		})
+	// 		return;
+	// 	}
+	// 	else{
+			let tempQuery = `insert into userdeviceinfo (name, team , time, endtime, deviceid, userid) values ?`;
+			db.query(tempQuery, [values],(err, results)=> {
 		
 			
 			
@@ -544,67 +585,73 @@ app.put('/topology/:id/:extended/:update', (req, res)=> {
 
 	
 		})
-	}
+	// }
 })
 	
 
-})
+// })
 
 
 
 app.post('/topology/:id', (req, res)=> {
-	let timeId= req.body.timeid;
+	
 	let name=req.body.name;
 	let teamname= req.body.team;
-	let startTime= req.body.startTime;
-	let endTime= req.body.endTime;
+	let sTime=req.body.sTime;
+	let eTime= req.body.eTime;
+
 	let uId= req.body.uId;
+	let deviceId= req.body.deviceId;
 	let start= req.body.startDate;
 	let end= req.body.endDate;
 	
 	// console.log(new Date(start), new Date(end));
-	let arr= []
+	// let arr= []
 
-		for(let dt=new Date(start); dt<=new Date(end); dt.setDate(dt.getDate()+1)){
-			let ISToffSet = 330; //IST is 5:30; i.e. 60*5+30 = 330 in minutes 
-			let offset= ISToffSet*60*1000;
-			let date=new Date(dt);
+	// 	for(let dt=new Date(start); dt<=new Date(end); dt.setDate(dt.getDate()+1)){
+			// let ISToffSet = 330; //IST is 5:30; i.e. 60*5+30 = 330 in minutes 
+			// let offset= ISToffSet*60*1000;
+			// let date=new Date(start);
 			
-			let startTime=new Date(date.getTime()+offset);
+			// let startTime=new Date(date.getTime()+offset);
 			
 			
-			startTime=startTime.toISOString().substring(0,11);
-			arr.push(startTime);
-		}
-		// console.log(arr);
+			// startTime=startTime.toISOString().substring(0,11);
+			// let dateend=new Date(end);
+			
+			// let endTime=new Date(dateend.getTime()+offset);
+			
+			
+			// endTime=endTime.toISOString().substring(0,11);
+	// 		arr.push(startTime);
+	// 	}
+	// 	// console.log(arr);
 
-	let values= [];
-	// for(let i=0;i<req.body.DeviceId.length;i++){
-		for(j=0;j<arr.length;j++){
-			let temp = [];
-			temp.push(name);
-			temp.push(teamname);
-			temp.push(arr[j].substring(0, 11)+startTime);
-			temp.push(arr[j].substring(0, 11)+endTime);
-			temp.push(req.body.DeviceId);
-			temp.push(uId);
-			temp.push(timeId);
-			values.push(temp);
-		}
-	// }
-	let deleted= 'deleted';
+	// let values= [];
+	// // for(let i=0;i<req.body.DeviceId.length;i++){
+	// 	for(j=0;j<arr.length;j++){
+	// 		let temp = [];
+	// 		temp.push(name);
+	// 		temp.push(teamname);
+	// 		temp.push(arr[j].substring(0, 11)+startTime);
+	// 		temp.push(arr[j].substring(0, 11)+endTime);
+	// 		temp.push(req.body.DeviceId);
+	// 		temp.push(uId);
+	// 		temp.push(timeId);
+	// 		values.push(temp);
+	// 	}
+	// // }
+	// let deleted= 'deleted';
+
+	// startTime=startTime+sTime;
+	// endTime=endTime+eTime;
+	// let deviceId= req.params.id;
 	// console.log(values+"huhu");
-	let qrr=`select * from userdeviceinfo where time='${values[0][2]}' and endtime='${values[0][3]}' and status != '${deleted}' and deviceid='${values[0][4]}'`;
-	db.query(qrr, (err, results)=>{
-		if(results.length>0){
-			res.status(663).json({
-				message: 'Time slot not available, please refresh the page to see latest available time slots'
-			})
-			return;
-		}
-		else{
-			let tempQuery = `insert into userdeviceinfo (name, team , time, endtime, deviceid, userid, timeid) values ?`;
-			db.query(tempQuery, [values], (err, results)=> {
+	
+	
+	
+			let tempQuery = `insert into userdeviceinfo (name, team , time, endtime, deviceid, userid) values ('${name}', '${teamname}', '${start}', '${end}', '${deviceId}', '${uId}')`;
+			db.query(tempQuery, (err, results)=> {
 				
 				
 				
@@ -617,11 +664,11 @@ app.post('/topology/:id', (req, res)=> {
 
 			
 		})
-		}
+		
 	
 
 })
-})
+
 
 app.put('/device/:id', (req, res)=> {
 	let uId= req.params.id;
@@ -899,10 +946,6 @@ app.put('/userdeviceinfo/:user/:device', (req, res)=> {
 	}
 })
 })
-
-
-
-
 
 
 
@@ -1362,7 +1405,7 @@ app.delete('/userdeviceinfo/:userdeviceinfoid/:name/:time', (req, res)=> {
 	let udId= req.params.userdeviceinfoid;
 	let name = req.params.name;
 	let time= req.params.time;
-	let updatedTime=time.replaceAll('_', '-'); 
+	let updatedTime=time.replace(/_/g, '-'); 
 	let qrr = `delete userdeviceinfo from userdeviceinfo JOIN topology ON  userdeviceinfo.deviceid=topology.deviceid where topology.topologyname='${name}' and userdeviceinfo.time LIKE '${updatedTime}'`;
 	// console.log(updatedTime, "updated time");
 
@@ -1475,20 +1518,27 @@ app.get('/userdeviceinfo/:deviceid/:dateTime', (req, res)=>{
 
 app.post('/userdeviceinfo', (req, res)=>{
 	let name= req.body.name;
-	let startDate= req.body.sDate+'T00:00';
-	let endDate= req.body.eDate+'T24:00';
+	let startDate= req.body.sDate;
+	let endDate= req.body.eDate;
 	// console.log(dId);
 	let deleted= 'deleted';
 
-	let qrr= `select userdeviceinfo.timeid, userdeviceinfo.time, userdeviceinfo.endtime from userdeviceinfo INNER JOIN topology ON topology.deviceid= userdeviceinfo.deviceid where topology.topologyname= '${name}' and time>='${startDate}' and endtime <= '${endDate}' and userdeviceinfo.status!='${deleted}' `
+	let qrr= `select  userdeviceinfo.time, userdeviceinfo.endtime from userdeviceinfo INNER JOIN topology ON topology.deviceid= userdeviceinfo.deviceid where topology.topologyname= '${name}' and !(endtime<='${startDate}' or time >= '${endDate}') and userdeviceinfo.status!='${deleted}' `
 	db.query(qrr, (err, results)=> {
 	if(err){
 		console.log(err);
 	}
-	if(results.length>0){
+	if(results.length==0){
 		// console.log(results);
 		res.send({
 			message: 'date and time information',
+			data:results
+		});
+	};
+	if(results.length>0){
+		// console.log(results);
+		res.status(663).json({
+			message: 'not available',
 			data:results
 		});
 	};
@@ -1497,23 +1547,30 @@ app.post('/userdeviceinfo', (req, res)=>{
 })
 app.post('/userdeviceinfo/data', (req, res)=>{
 	let dId= req.body.deviceId;
-	let startDate= req.body.sDate+'T00:00';
-	let endDate= req.body.eDate+'T24:00';
+	let startDate= req.body.sDate;
+	let endDate= req.body.eDate;
 	// console.log(dId);
 	let deleted= 'deleted';
 
-	let qrr= `select timeid,time, endtime from userdeviceinfo  where deviceid='${dId}' and time>='${startDate}' and endtime <= '${endDate}' and status!='${deleted}' `
+	let qrr= `select time, endtime from userdeviceinfo  where deviceid='${dId}' and !(endtime<='${startDate}' or time >= '${endDate}') and status!='${deleted}' `
+	// FROM `userdeviceinfo` WHERE 2023-03-15T12:24>='2023-03-15T12:41' and 2023-03-15T13:59 <= '2023-03-15T12:45';
 	db.query(qrr, (err, results)=> {
-	if(err){
-		console.log(err);
-	}
-	if(results.length>0){
+		// console.log(qrr)
+	
+	
 		// console.log(results);
-		res.send({
-			message: 'date and time information',
-			data:results
-		});
-	};
+		if(results.length==0){
+			return res.send({
+				message:'yes'
+			})
+		}
+		if(results.length>0){
+			return res.status(663).json({
+				message: 'not available'
+			})
+		}
+		
+	
 	});
 
 })
@@ -1528,9 +1585,9 @@ app.get('/userdeviceinfo/:name', (req, res)=>{
     // startTime=startTime.toISOString().substring(0,16);
    
     startTime.setDate(startTime.getDate());
-    let extendedTime= startTime.toISOString().substring(0,11)+ '00:00';
+    let extendedTime= startTime.toISOString();
 	
-	let qrr = `select DISTINCT userdeviceinfo.time,  userdeviceinfo.endtime, userdeviceinfo.name, userdeviceinfo.timeid from userdeviceinfo INNER JOIN topology ON userdeviceinfo.deviceid= topology.deviceid where topology.topologyname='${name}' and  userdeviceinfo.time>= '${extendedTime}'  `;
+	let qrr = `select DISTINCT userdeviceinfo.time,  userdeviceinfo.endtime, userdeviceinfo.name, userdeviceinfo.timeid from userdeviceinfo INNER JOIN topology ON userdeviceinfo.deviceid= topology.deviceid where topology.topologyname='${name}' and  userdeviceinfo.time<= '${extendedTime}' and endtime>='${extendedTime}' `;
 	// console.log(dId);
 	db.query(qrr, (err, results)=> {
 	if(err){
@@ -1552,7 +1609,7 @@ app.get('/userdeviceinfo/:name', (req, res)=>{
 app.get('/userdeviceinfo/:userid/:dateTime/history', (req, res)=>{
 	// console.log('Get all users');
 	let uId = req.params.userid;
-	let currentDate= req.params.dateTime.replaceAll('_', '-');
+	let currentDate= req.params.dateTime.replace(/_/g, '-');
 	let deleted= 'deleted';
 	let date= currentDate.substring(0, 13)+':'+ currentDate.substring(14, 16);
 	// console.log(date, uId);
@@ -1561,13 +1618,13 @@ app.get('/userdeviceinfo/:userid/:dateTime/history', (req, res)=>{
 	if(err){
 		console.log(err);
 	}
-	if(results.length>0){
+	
 		// console.log(results);
 		res.send({
 			message: 'date and time information',
 			data:results
 		});
-	};
+	
 	});
 	
 });
@@ -1575,7 +1632,7 @@ app.get('/userdeviceinfo/:userid/:dateTime/history', (req, res)=>{
 app.get('/topology/:userid/:dateTime/history/device', (req, res)=>{
 	// console.log('Get all users');
 	let uId = req.params.userid;
-	let currentDate= req.params.dateTime.replaceAll('_', '-');
+	let currentDate= req.params.dateTime.replace(/_/g, '-');
 	let deleted= 'deleted';
 	let date= currentDate.substring(0, 13)+':'+ currentDate.substring(14, 16);
 	// console.log(date, uId);
@@ -1586,13 +1643,13 @@ app.get('/topology/:userid/:dateTime/history/device', (req, res)=>{
 	if(err){
 		console.log(err);
 	}
-	if(results.length>0){
+	
 		// console.log(results);
 		res.send({
 			message: 'date and time information',
 			data:results
 		});
-	};
+
 	});
 	
 });
@@ -1601,33 +1658,58 @@ app.get('/topology/:userid/:dateTime/history/device', (req, res)=>{
 app.get('/userdeviceinfo/:userid/:dateTime/current/device/status', (req, res)=>{
 	// console.log('Get all users');
 	let uId = req.params.userid;
-	let currentDate= req.params.dateTime.replaceAll('_', '-');
+	let currentDate= req.params.dateTime.replace(/_/g, '-');
 	let status= 'deleted';
 	let date= currentDate.substring(0, 13)+':'+ currentDate.substring(14, 16);;
 	// console.log(date);
 	let deleted= 'deleted';
-	let qrr = `select   userdeviceinfo.time, userdeviceinfo.id, userdeviceinfo.endtime, userdeviceinfo.team,  devices.devicename from userdeviceinfo INNER JOIN devices ON userdeviceinfo.deviceid=devices.id  where userdeviceinfo.userid='${uId}' and  userdeviceinfo.endtime>='${date}' and userdeviceinfo.time<='${date}' and userdeviceinfo.status!='${deleted}' and devices.id NOT In (select deviceid from topology);`;
+	let qrr = `select userdeviceinfo.time, userdeviceinfo.id, userdeviceinfo.endtime, userdeviceinfo.team,  devices.devicename from userdeviceinfo INNER JOIN devices ON userdeviceinfo.deviceid=devices.id  where userdeviceinfo.userid='${uId}' and  userdeviceinfo.endtime>='${date}' and userdeviceinfo.time<='${date}' and userdeviceinfo.status!='${deleted}' and devices.id NOT In (select deviceid from topology);`;
 
 	// let qrr = `select  userdeviceinfo.id, devices.rack, devices.unit, userdeviceinfo.time, userdeviceinfo.endtime, devices.teamname, devices.projectname, devices.devicename from userdeviceinfo INNER JOIN devices ON userdeviceinfo.deviceid=devices.id where userdeviceinfo.userid='${uId}' and userdeviceinfo.endtime>='${date}' and userdeviceinfo.time<='${date}' and userdeviceinfo.status!='${status}'`;
 	db.query(qrr, (err, results)=> {
 	if(err){
 		console.log(err);
 	}
-	if(results.length>0){
+	
 		// console.log(results);
 		res.send({
 			message: 'date and time information',
 			data:results
 		});
-	};
+	
 	});
 	
 });
 
+
+app.get('/users/:dateTime/get/info', (req, res)=>{
+	// console.log('Get all users');
+	
+	let currentDate= req.params.dateTime.replace(/_/g, '-');
+	let date= currentDate.substring(0, 13)+':'+ currentDate.substring(14, 16);
+	// console.log(date);
+	let deleted= 'deleted';
+	let qrr = `select userdeviceinfo.deviceid,userdeviceinfo.time, userdeviceinfo.endtime , userdeviceinfo.name from userdeviceinfo INNER JOIN devices ON userdeviceinfo.deviceid=devices.id  where  userdeviceinfo.endtime>='${date}' and userdeviceinfo.time<='${date}' and userdeviceinfo.status!='${deleted}' and devices.id NOT In (select deviceid from topology);`;
+
+	// let qrr = `select  userdeviceinfo.id, devices.rack, devices.unit, userdeviceinfo.time, userdeviceinfo.endtime, devices.teamname, devices.projectname, devices.devicename from userdeviceinfo INNER JOIN devices ON userdeviceinfo.deviceid=devices.id where userdeviceinfo.userid='${uId}' and userdeviceinfo.endtime>='${date}' and userdeviceinfo.time<='${date}' and userdeviceinfo.status!='${status}'`;
+	db.query(qrr, (err, results)=> {
+	if(err){
+		console.log(err);
+	}
+	
+		// console.log(results);
+		res.send({
+			message: 'date and time information',
+			data:results
+		});
+
+	});
+	
+});
 app.get('/userdeviceinfo/:userid/:dateTime/schedule/device', (req, res)=>{
 	// console.log('Get all users');
 	let uId = req.params.userid;
-	let currentDate= req.params.dateTime.replaceAll('_', '-');
+	let currentDate= req.params.dateTime.replace(/_/g, '-');
 	let date= currentDate.substring(0, 13)+':'+ currentDate.substring(14, 16);
 	// console.log(date);
 	let qrr = `select  DISTINCT userdeviceinfo.time, userdeviceinfo.id, userdeviceinfo.endtime, userdeviceinfo.team,  topology.topologyname from userdeviceinfo INNER JOIN topology ON userdeviceinfo.deviceid=topology.deviceid where userdeviceinfo.userid='${uId}' and userdeviceinfo.time>'${date}' group by topology.topologyname , userdeviceinfo.time`;
@@ -1635,13 +1717,13 @@ app.get('/userdeviceinfo/:userid/:dateTime/schedule/device', (req, res)=>{
 	if(err){
 		console.log(err);
 	}
-	if(results.length>0){
+	
 		// console.log(results);
 		res.send({
 			message: 'date and time information',
 			data:results
 		});
-	};
+
 	});
 	
 });
@@ -1650,7 +1732,7 @@ app.get('/topology/:userid/:dateTime/current', (req, res)=>{
 	// console.log('Get all users');
 	let uId = req.params.userid;
 	let deleted= 'deleted';
-	let currentDate= req.params.dateTime.replaceAll('_', '-');
+	let currentDate= req.params.dateTime.replace(/_/g, '-');
 	let date= currentDate.substring(0, 13)+':'+ currentDate.substring(14, 16);
 	// console.log(date);
 	let qrr = `select  DISTINCT userdeviceinfo.time, userdeviceinfo.id, userdeviceinfo.endtime, userdeviceinfo.team,  topology.topologyname from userdeviceinfo INNER JOIN topology ON userdeviceinfo.deviceid=topology.deviceid where userdeviceinfo.userid='${uId}' and userdeviceinfo.endtime>='${date}' and userdeviceinfo.time<='${date}' and userdeviceinfo.status != '${deleted}' group by topology.topologyname , userdeviceinfo.time`;
@@ -1658,13 +1740,13 @@ app.get('/topology/:userid/:dateTime/current', (req, res)=>{
 	if(err){
 		console.log(err);
 	}
-	if(results.length>0){
+
 		// console.log(results);
 		res.send({
 			message: 'date and time information',
 			data:results
 		});
-	};
+
 	});
 	
 });
@@ -1673,7 +1755,7 @@ app.get('/topology/:userid/:dateTime/current', (req, res)=>{
 app.get('/topology/:userid/:dateTime', (req, res)=>{
 	// console.log('Get all users');
 	let uId = req.params.userid;
-	let currentDate= req.params.dateTime.replaceAll('_', '-');
+	let currentDate= req.params.dateTime.replace(/_/g, '-');
 	let date= currentDate.substring(0, 13)+':'+ currentDate.substring(14, 16);
 	// console.log(date);
 	let qrr = `select   userdeviceinfo.time, userdeviceinfo.id, userdeviceinfo.endtime, userdeviceinfo.team,  devices.devicename from userdeviceinfo INNER JOIN devices ON userdeviceinfo.deviceid=devices.id  where userdeviceinfo.userid='${uId}' and userdeviceinfo.time>'${date}' and devices.id NOT In (select deviceid from topology);`;
@@ -1681,13 +1763,13 @@ app.get('/topology/:userid/:dateTime', (req, res)=>{
 	if(err){
 		console.log(err);
 	}
-	if(results.length>0){
+
 		// console.log(results);
 		res.send({
 			message: 'date and time information',
 			data:results
 		});
-	};
+
 	});
 	
 });
@@ -1813,29 +1895,6 @@ app.get('/devices/:name', (req, res)=>{
 });
 
 // get data by name
-app.get('/userdeviceinfo', (req, res)=>{
-	// console.log(req.params.id);
-	// let qrName= req.params.name;
-	// console.log(qrName);
-	//SELECT Orders.OrderID, Customers.CustomerName, Orders.OrderDate FROM Orders INNER JOIN Customers ON Orders.CustomerID=Customers.CustomerID;
-	let qrr = `select *  FROM userdeviceinfo INNER JOIN devices on devices.id=userdeviceinfo.deviceid`;
-	db.query(qrr, (err, results)=> {
-	if(err){
-		console.log(err)
-	}
-	if(results.length>0){
-		res.send({
-			message: 'all data by name',
-			data:results
-		});
-	}
-	else{
-		message: 'data not found'
-	}
-
-	});
-	
-});
 
 
 app.get('/devices/:id/get/information', (req, res)=>{
@@ -1852,9 +1911,9 @@ app.get('/devices/:id/get/information', (req, res)=>{
     // startTime=startTime.toISOString().substring(0,16);
    
     startTime.setDate(startTime.getDate() );
-    let extendedTime= startTime.toISOString().substring(0,11)+ '00:00';
+    let extendedTime= startTime.toISOString();
 	//SELECT Orders.OrderID, Customers.CustomerName, Orders.OrderDate FROM Orders INNER JOIN Customers ON Orders.CustomerID=Customers.CustomerID;
-	let qrr = `select time, endtime, name  FROM userdeviceinfo where deviceid='${id}' and status!='${deleted}' and time>='${extendedTime}'`;
+	let qrr = `select time, endtime, name  FROM userdeviceinfo where deviceid='${id}' and status!='${deleted}' and time<='${extendedTime}' and endtime>='${extendedTime}'`;
 	db.query(qrr, (err, results)=> {
 	if(err){
 		console.log(err)
@@ -1874,8 +1933,12 @@ app.get('/devices/:id/get/information', (req, res)=>{
 });
 
 
-app.listen(3000, ()=>{
+app.listen(3006, ()=>{
     // nodemon 127.0.0.1
     console.log('port 3000');
 })
+
+
+
+
 
